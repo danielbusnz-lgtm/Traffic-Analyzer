@@ -95,6 +95,8 @@ fn list_and_select_interface() -> Result<String> {
 fn start_capture(interface_name: &str) -> Result<Capture<Active>> {
     println!("\nOpening capture on interface: {}", interface_name);
     let mut cap = Capture::from_device(interface_name)?.promisc(true).snaplen(5000).open().context("error capturing interface")?;
+
+    Ok(cap)
 }
 
 
