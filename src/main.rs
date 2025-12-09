@@ -94,24 +94,33 @@ fn list_and_select_interface() -> Result<String> {
 
 fn start_capture(interface_name: &str) -> Result<Capture<Active>> {
     println!("\nOpening capture on interface: {}", interface_name);
-    let mut cap = Capture::from_device(interface_name)?.promisc(true).snaplen(5000).open().context("error capturing interface")?;
+    let  cap = Capture::from_device(interface_name)?.promisc(true).snaplen(5000).open().context("error capturing interface")?;
 
     Ok(cap)
 }
 
 fn parse_packet(packet:&[u8]){
-    if let Some(Ethernet) = EthernetPacket::new(packet){
+    if let Some(ethernet) = EthernetPacket::new(packet){
         let src_mac = ethernet.get_source();
         let dst_mac = ethernet.get_destination();
-        
+        println!("MAC Adress {} -> {}", src_mac, dst_mac)
          
         //check whats inside the ethernet frame
         match ethernet.get_ethertype(){
             EtherTypes::Ipv4 => {
-
-                if let some(ipv4) = Ipv4Packet::new
+                if let Some(ipv4) = Ipv4Packet::new(ethernet.payload()){
+                    println!("ipv4 -> {} {}", ipv4.get_source(), ipv4.get_destination());
+                    
+                    match ipv4.get_next_level_protocol() {
+                        IpNextHeaderProtocols::Tcp => {
+                            if let Some(tcp) = TcpPacket::new(ipv4.payload())
+                        }
+                            
+                    }
+                    
+                }
             }
+            _ => {}
         }
-
     }
 }
