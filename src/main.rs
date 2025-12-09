@@ -43,7 +43,7 @@ fn main() -> Result<()> {
     let mut cap = start_capture(&interface_name)?;
 
     while let Ok(packet) = cap.next_packet() {
-        println!("recieved packet {:?}", packet)
+        parse_packet(&packet);
     }
     Ok(())
 }
@@ -99,4 +99,19 @@ fn start_capture(interface_name: &str) -> Result<Capture<Active>> {
     Ok(cap)
 }
 
+fn parse_packet(packet:&[u8]){
+    if let Some(Ethernet) = EthernetPacket::new(packet){
+        let src_mac = ethernet.get_source();
+        let dst_mac = ethernet.get_destination();
+        
+         
+        //check whats inside the ethernet frame
+        match ethernet.get_ethertype(){
+            EtherTypes::Ipv4 => {
 
+                if let some(ipv4) = Ipv4Packet::new
+            }
+        }
+
+    }
+}
