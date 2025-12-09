@@ -40,7 +40,11 @@ fn main() -> Result<()> {
         list_and_select_interface()?
 
     };
+    let mut cap = start_capture(&interface_name)?;
 
+    while let Ok(packet) = cap.next_packet() {
+        println!("recieved packet {:?}", packet)
+    }
     Ok(())
 }
 
@@ -88,10 +92,9 @@ fn list_and_select_interface() -> Result<String> {
 
 }   
 
-fn start_capture(interface_name: &str) -> Result<Capture<Active>>{
+fn start_capture(interface_name: &str) -> Result<Capture<Active>> {
     println!("\nOpening capture on interface: {}", interface_name);
-
-
+    let mut cap = Capture::from_device(interface_name)?.promisc(true).snaplen(5000).open().context("error capturing interface")?;
 }
 
 
