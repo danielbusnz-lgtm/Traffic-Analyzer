@@ -1,5 +1,9 @@
 # Traffic Analyzer
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
+[![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos-lightgrey.svg)](https://github.com/danielbusnz-lgtm/Traffic-Analyzer)
+
 Network traffic analyzer and packet capture tool written in Rust.
 
 ## Features
