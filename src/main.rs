@@ -2,6 +2,7 @@
 use clap::Parser;
 use pcap::{Active, Device, Capture};
 use pnet_packet::ethernet::{EthernetPacket, EtherTypes};
+use pnet_packet::icmp::IcmpPacket;
 use pnet_packet::ip::IpNextHeaderProtocols;
 use pnet_packet::ipv4::Ipv4Packet;
 use pnet_packet::tcp::TcpPacket;
@@ -43,8 +44,15 @@ fn main() -> Result<()> {
     let mut cap = start_capture(&interface_name)?;
 
     while let Ok(packet) = cap.next_packet() {
-        parse_packet(&packet);
+        parse_packet(&packet);     
     }
+    let mut stats = PacketStats{
+        total: 0,
+        tcp: 0,
+        udp: 0,
+        icmp:0,
+    };
+    
     Ok(())
 }
 
@@ -99,11 +107,11 @@ fn start_capture(interface_name: &str) -> Result<Capture<Active>> {
     Ok(cap)
 }
 
-fn parse_packet(packet:&[u8]){
+fn parse_packet(packet:&[u8], stats:&mut PacketStats){
     if let Some(ethernet) = EthernetPacket::new(packet){
         let src_mac = ethernet.get_source();
         let dst_mac = ethernet.get_destination();
-        println!("MAC Adress {} -> {}", src_mac, dst_mac)
+        println!("MAC Adress {} -> {}", src_mac, dst_mac);
          
         //check whats inside the ethernet frame
         match ethernet.get_ethertype(){
@@ -113,9 +121,25 @@ fn parse_packet(packet:&[u8]){
                     
                     match ipv4.get_next_level_protocol() {
                         IpNextHeaderProtocols::Tcp => {
-                            if let Some(tcp) = TcpPacket::new(ipv4.payload())
+                            if let Some(tcp) = TcpPacket::new(ipv4.payload()){
+                                println!("tcp Source:{} Destination:{}", tcp.get_source(), tcp.get_destination())
+                            }
                         }
-                            
+                        IpNextHeaderProtocols::Udp => {
+                            if let Some(udp) = UdpPacket::new(ipv4.payload()){
+                                println!("Udp source:{} Destination:{}",udp.get_source(), udp.get_destination() )
+                            }
+
+                        }   
+                        IpNextHeaderProtocols::Icmp =>{
+                            if let Some(icmp) = IcmpPacket::new(ipv4.payload()){
+                                println!("Icmp type:{:?} code:{:?}",icmp.get_icmp_type(), icmp.get_icmp_code());
+
+                            }
+                        }
+                        _=>{
+                            println!("Other Protocols")
+                        }
                     }
                     
                 }
@@ -124,3 +148,14 @@ fn parse_packet(packet:&[u8]){
         }
     }
 }
+
+struct PacketStats {
+    total: u64,
+    tcp: u64,
+    udp: u64,
+    icmp: u64,
+}
+
+
+
+
