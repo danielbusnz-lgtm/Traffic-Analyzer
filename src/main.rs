@@ -1,5 +1,5 @@
 //imports
-use clap::Parser;
+use clap::{Parser,Subcommand};
 use pcap::{Active, Device, Capture};
 use pnet_packet::ethernet::{EthernetPacket, EtherTypes};
 use pnet_packet::icmp::IcmpPacket;
@@ -9,50 +9,104 @@ use pnet_packet::tcp::TcpPacket;
 use pnet_packet::udp::UdpPacket;
 use pnet_packet::Packet;
 use std::io::{self, Write};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::{Context, Result};
+use std::net::SocketAddr;
+use std::time::Duration;
+use tokio::net::TcpStream;
+use tokio::time::timeout;
 
 //parse command line arguments
 #[derive(Parser, Debug)]
 //help command
 #[command(name = "traffic-analyzer")]
 //descrption of what command does
-#[command(about = "Network Traffic Analyzer and Packet Capture Tool")]
+#[command(version, about = "Network Traffic Analyzer and Packet Capture Tool")]
 
 
 struct Args {
     //network Interface to capture on (eth0, wlan0)
-    interface: Option<String>,
-
-    #[arg(short, long)]
-    file: Option<String>,
+    #[command(subcommand)]
+    command: Commands,
 }
 
+#[derive(Subcommand, Debug)]
+enum Commands {
+    Capture {
+        interface: Option<String>,
+
+        #[arg(short,long)]
+        file: Option<String>,
+
+    },
+
+    Scan {
+        target: String,
+
+        #[arg(short,long, default_value = "1")]
+        start:u16,
+
+        #[arg(short, long, default_value = "1024")]
+        end:u16,
+    },
+}
 
 
 // main function with Result as a error handler
 fn main() -> Result<()> {
     let args = Args::parse();
-
-    println!("Traffic Analyzer Starting...");
     
-    let interface_name = if let Some(iface) = args.interface {
-        iface 
-    } else{
-        list_and_select_interface()?
-
+    match args.command {
+        Commands::Capture {interface, file} => {
+            println!("Traffic Analyze Starting..");
+            
+            let interface_name = if let Some(iface) = interface {
+                iface
+            
+            } else{
+                    list_and_select_interface()?
+        };
+        
+    
+            let mut cap = start_capture(&interface_name)?;
+            let mut stats = PacketStats{
+            total: 0,
+            tcp: 0,
+            udp: 0,
+            icmp:0,
     };
-    let mut cap = start_capture(&interface_name)?;
+     
+      
+    //set up Ctrl + c handler
+        let running = Arc::new(AtomicBool::new(true));
+        let r = running.clone();
+        ctrlc::set_handler(move || {
+            r.store(false, Ordering::SeqCst);
+        }).expect("Error setting Ctrl-C Handler");
 
-    while let Ok(packet) = cap.next_packet() {
-        parse_packet(&packet);     
+    println!("Capturing packets... Press Ctrl+C to stop \n");
+    
+    while running.load(Ordering::SeqCst) {
+        if let Ok(packet) = cap.next_packet() {
+            parse_packet(&packet, &mut stats)
+        }
     }
-    let mut stats = PacketStats{
-        total: 0,
-        tcp: 0,
-        udp: 0,
-        icmp:0,
-    };
     
+      
+            println!("\n{:-<60}", "");
+            println!("Packet Statistics:");
+            println!("Total packets: {}", stats.total);
+            println!("  TCP:  {}", stats.tcp);
+            println!("  UDP:  {}", stats.udp);
+            println!("  ICMP: {}", stats.icmp);
+            println!("{:-<60}", "");
+        },
+        Commands::Scan { target, start, end } => {
+            // Scanner code will go here
+        },
+    }
+
     Ok(())
 }
 
@@ -108,6 +162,7 @@ fn start_capture(interface_name: &str) -> Result<Capture<Active>> {
 }
 
 fn parse_packet(packet:&[u8], stats:&mut PacketStats){
+    stats.total += 1;
     if let Some(ethernet) = EthernetPacket::new(packet){
         let src_mac = ethernet.get_source();
         let dst_mac = ethernet.get_destination();
@@ -122,19 +177,21 @@ fn parse_packet(packet:&[u8], stats:&mut PacketStats){
                     match ipv4.get_next_level_protocol() {
                         IpNextHeaderProtocols::Tcp => {
                             if let Some(tcp) = TcpPacket::new(ipv4.payload()){
-                                println!("tcp Source:{} Destination:{}", tcp.get_source(), tcp.get_destination())
+                                println!("tcp Source:{} Destination:{}", tcp.get_source(), tcp.get_destination());
+                                stats.tcp += 1;
                             }
                         }
                         IpNextHeaderProtocols::Udp => {
                             if let Some(udp) = UdpPacket::new(ipv4.payload()){
-                                println!("Udp source:{} Destination:{}",udp.get_source(), udp.get_destination() )
+                                println!("Udp source:{} Destination:{}",udp.get_source(), udp.get_destination());
+                                stats.udp += 1;
                             }
 
                         }   
                         IpNextHeaderProtocols::Icmp =>{
                             if let Some(icmp) = IcmpPacket::new(ipv4.payload()){
                                 println!("Icmp type:{:?} code:{:?}",icmp.get_icmp_type(), icmp.get_icmp_code());
-
+                                stats.icmp += 1;
                             }
                         }
                         _=>{
@@ -148,6 +205,23 @@ fn parse_packet(packet:&[u8], stats:&mut PacketStats){
         }
     }
 }
+
+async fn scan_port(ip: &str, port:u16, timeout_ms: u64) -> bool {
+    let address = format!("{}:{}",ip, port);
+
+    let addr: SocketAddr = match address.parse() {
+        Ok(a) => a,
+        Err(_) => return false, 
+
+    };
+
+}
+ 
+
+
+
+
+
 
 struct PacketStats {
     total: u64,
