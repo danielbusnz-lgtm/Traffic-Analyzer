@@ -9,3 +9,5 @@ pnet = "0.35"
 pnet_packet = "0.35"
 clap = { version = "4.5", features = ["derive"] }
 anyhow = "1.0"
+tokio = { version = "1.42", features = ["full"] }
+ctrlc = "3.4"

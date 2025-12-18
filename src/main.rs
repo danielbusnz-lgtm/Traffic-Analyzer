@@ -16,6 +16,8 @@ use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
+use tokio::task;
+use tokio::net::lookup_host; 
 
 //parse command line arguments
 #[derive(Parser, Debug)]
@@ -58,7 +60,7 @@ fn main() -> Result<()> {
     let args = Args::parse();
     
     match args.command {
-        Commands::Capture {interface, file} => {
+        Commands::Capture {interface, file: _} => {
             println!("Traffic Analyze Starting..");
             
             let interface_name = if let Some(iface) = interface {
@@ -103,7 +105,11 @@ fn main() -> Result<()> {
             println!("{:-<60}", "");
         },
         Commands::Scan { target, start, end } => {
-            // Scanner code will go here
+            // Create Tokio runtime
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(async {
+                run_scanner(target, start, end).await
+            })?;
         },
     }
 
@@ -206,16 +212,63 @@ fn parse_packet(packet:&[u8], stats:&mut PacketStats){
     }
 }
 
-async fn scan_port(ip: &str, port:u16, timeout_ms: u64) -> bool {
-    let address = format!("{}:{}",ip, port);
+async fn scan_port(ip: &str, port: u16, timeout_ms: u64) -> bool {
+    // Format address properly - IPv6 needs brackets
+    let address = if ip.contains(':') {
+        format!("[{}]:{}", ip, port)  // IPv6: [2607:f8b0:..]:80
+    } else {
+        format!("{}:{}", ip, port)     // IPv4: 192.168.1.1:80
+    };
 
     let addr: SocketAddr = match address.parse() {
         Ok(a) => a,
-        Err(_) => return false, 
-
+        Err(_) => return false,
     };
 
+    // Try to connect with timeout - return true if open, false otherwise
+    match timeout(Duration::from_millis(timeout_ms), TcpStream::connect(&addr)).await {
+        Ok(Ok(_)) => true,   // Connection succeeded - port is OPEN
+        Ok(Err(_)) => false, // Connection failed - port is CLOSED
+        Err(_) => false,     // Timeout
+    }
 }
+
+async fn run_scanner(target: String, start: u16, end: u16) -> Result<()> {
+    let test_addr = format!("{}:{}", target, start);
+    let mut addrs = lookup_host(&test_addr).await?;
+
+    let resolved_ip = if let Some(addr)= addrs.next(){
+        addr.ip().to_string()
+    } else {
+        anyhow::bail!("Could not Resolve Hostname {}", target);
+    };
+
+    println!("Resolved {} to {}", target, resolved_ip);
+    println!("Strarting the scan of {} at {}:{}",target,start,end);
+    let mut handles = Vec::new();
+
+    for port in start..end{
+        let ip_clone =  resolved_ip.clone();
+        let target_clone = target.clone();
+        let handle = task::spawn(async move {
+            let is_open = scan_port(&ip_clone, port, 10000).await;
+            if is_open {
+                println!("Listening on: {}:{}",target_clone,port);
+            }
+        });
+        handles.push(handle);
+    }
+
+    for handle in handles{
+        let _ = handle.await;
+    }
+
+    Ok(())
+}
+
+
+
+    
  
 
 
@@ -228,8 +281,14 @@ struct PacketStats {
     tcp: u64,
     udp: u64,
     icmp: u64,
+
 }
 
+struct ScanStats {
+    total: u64,
+    open: u64,
+    closed: u64,
+}
 
 
 
